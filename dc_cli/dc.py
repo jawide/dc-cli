@@ -29,8 +29,8 @@ DOCKER_COMPOSE = ''
 def get_package_path(package) -> str:
     return os.path.join(PACKAGE_PATH, package)
 
-def download_package(package):
-    res = urllib3.PoolManager().request('GET', urllib.parse.urljoin(HOST, '/software/{}'.format(package)))
+def download_package(package, url):
+    res = urllib3.PoolManager().request('GET', url or urllib.parse.urljoin(HOST, '/software/{}'.format(package)))
     if res.status == http.HTTPStatus.OK:
         dirpath = get_package_path(package)
         if not os.path.exists(dirpath):
@@ -40,23 +40,22 @@ def download_package(package):
     else:
         raise Exception('{}\nPackage {} download failed'.format(res.data, package))
 
-def execute_docker_compose(dirpath, cmd, interval=0.1):
+def execute_docker_compose(dirpath, cmd):
     code = subprocess.Popen([*shlex.split(DOCKER_COMPOSE), *shlex.split(cmd)], cwd=dirpath).wait()
     if code != 0:
         print('Execute command failed')
         exit(code)
 
 def install(args):
-    download_package(args.package)
+    download_package(args.package, args.url)
     dirpath = get_package_path(args.package)
     execute_docker_compose(dirpath, 'up -d')
     print('Package {} install complete'.format(args.package))
 
 def uninstall(args):
     dirpath = get_package_path(args.package)
-    if not os.path.exists(dirpath):
-        os.makedirs(dirpath)
-        download_package()
+    if not os.path.exists(dirpath) or not os.path.exists(os.path.join(dirpath, 'docker-compose.yml')):
+        download_package(args.package, args.url)
     execute_docker_compose(dirpath, 'down')
     shutil.rmtree(dirpath)
     print('Package {} uninstall complete'.format(args.package))
@@ -101,7 +100,9 @@ def main():
 
     parser.add_argument('--version', default='1', choices=['1', '2'], help='Docker compose version')
     install_parser.add_argument('package')
+    install_parser.add_argument('url', default=None, nargs='?')
     uninstall_parser.add_argument('package')
+    uninstall_parser.add_argument('url', default=None, nargs='?')
     update_parser.add_argument('package')
 
     args = parser.parse_args()
